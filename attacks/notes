@@ -1,0 +1,120 @@
+== Data set ==
+
+Parameters: DATA_LOC, DATA_TYPE
+
+Each attack takes in elements from the data set in DATA_LOC. 
+X-Y elements are considered to be instances of site X and are monitored.
+Integer elements Z without a hyphen are considered to be non-monitored elements
+in the open world; each should come from a different site.
+X, Y should start from 0.
+
+The input files should be well-filtered, i.e. it should not have missing
+or empty elements. There should be at least 75 cells in each instance.
+
+Attacks read data based on TRAIN_LIST and TEST_LIST. 
+They also need to know if there are any open world elements (OPEN = 0 or 1). 
+
+== Generating training/testing set ==
+
+Parameters: TRAIN_LIST, TEST_LIST, CLOSED_SITENUM, CLOSED_INSTNUM, OPEN_INSTNUM, FOLD_NUM, FOLD_MODE
+
+gen-list.py generates those files:
+
+	python gen-list.py options-XX
+
+It takes in options-gen-list, which is based on:
+MODE, CLOSED_SITENUM, CLOSED_INSTNUM, OPEN_INSTNUM, DATA_LOC, DATA_TYPE, OUTPUT_LOC, and FOLD. 
+It generates two files, OUTPUT_LOC + "trainlist" and OUTPUT_LOC + "testlist". 
+
+Data is in the following format:
+Each line is a pair time\tpacketsize.
+Packetsize is positive if outgoing and negative if incoming
+In the cell format, |packetsize| = 1.
+
+== Non-lev-based attacks ==
+
+Parameters: TRAIN_LIST, TEST_LIST, OUTPUT_LOC
+
+To run a non-lev-based attack algorithm, do the following:
+
+python attack-tenfold.py attack_list options
+
+The above code does the following for each attackname in attack_list, after cell data is put in INPUT_LOC:
+- For fold_num from 0 to 9:
+	-- "gen_list.py options" generates train/test lists for fold X.
+	-- "python attackname.py options" calculates accuracy for fold X. 
+- Combine the above results. 
+
+A variation of attack-tenfold.py is attack-kNC.py, which uses ten-fold cross validation to increase TNR. 
+
+The non-lev-based algorithms are:
+
+cc
+jac
+nb
+mnb
+timing
+svm-run
+vngpp
+kNN
+cumul-run
+
+== Lev-based attacks == 
+Parameters: LEV_LOC, LEV_METHOD
+
+Lev-based algorithms are slow, and require pre-processing.
+Therefore, running each attack is a two-step process (each step triggered manually).
+The first step generally requires computational power. 
+Pre-processing by compiling clLev:
+
+	mpiCC clLev.cpp -o clLev 
+
+To run:
+
+	mpirun -n CORE_TOTAL ./clLev options-XX
+ 
+The lev files go to OUTPUT_LOC of options-XX, and are input into LEV_LOC in options. 
+Once the files are loaded into LEV_LOC, we call attack-lev-tenfold.py to get results:
+
+python attack-tenfold-lev.py attack_list options
+
+The process goes as follows, after processed data is put in LEV_LOC:
+- Call ./clgen_stratify options-test to generate stratified matrices
+- for fold_num from 0 to 9:
+	-- "gen-lev-list.py options" combine 9 of those matrices into a training set and 1 into a testing set
+	-- "python attackname.py options" calls the SVM to calculate accuracy
+- Combine the above results. 
+
+The lev-based algorithms are:
+
+Lu-Lev (LEV_METHOD = 0)
+Ca-OSAD (LEV_METHOD = 1)
+Wa-OSAD (LEV_METHOD = 2)
+FLev (LEV_METHOD = 3)
+
+== Output ==
+
+OUTPUT_LOC states where 3 files are to be created:
+
+1, OUTPUT_LOC + ".log" - contains misc details, but final two lines must be TPR: x/x and FPR: x/x
+2. OUTPUT_LOC + ".results" - contains classification of every input file
+Each line contains (2 + number of classes) tab-delimited numbers.
+First is the time, second is the ground truth, and the numbers thereafter are the "match" of each class.
+The highest-scoring match is the assigned class. 
+3. OUTPUT_LOC + ".dist" - contains
+Number of lines = (CLOSED_SITENUM * CLOSED_INSTNUM + OPEN_INSTNUM) = n
+Line x = tab-delimited pairs of distance between element x and element x+1, x+2, ... n
+(Each increasing line number will therefore have one fewer element)
+Since this file can be very large, it is only output if d["OUTPUT_DISTANCE"] == 1, and each file should check!
+
+run-lev.py runs the three heavy lev attacks against an options file,
+and outputs intermediate levenshtein calculations.
+run-all.py runs every attack against an options file and summarizes the results. 
+However run-all.py wouldn't work without first running run-heavy.py,
+and then throwing its levenshtein output into PROCESS_LOC. 
+
+== Misc. ==
+
+Some attacks still rely on CLOSED_SITENUM, CLOSED_INSTNUM, OPEN_INSTNUM. These are:
+
+
